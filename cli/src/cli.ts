@@ -268,8 +268,9 @@ async function runCommand(
           console.log(JSON.stringify(n));
         } else {
           console.log(
-            `[${n.createdAt}] ${n.channel.padEnd(6)} ${n.title} — ${n.body}`,
+            `[${n.createdAt}] ${n.channel.padEnd(6)} ${n.title}`,
           );
+          console.log(`    ${n.body}`);
         }
       });
       await new Promise<void>((resolve) => {
