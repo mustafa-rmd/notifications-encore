@@ -16,7 +16,7 @@ postman.json    Postman v2.1.0 collection covering every endpoint
 
 Prereqs: [Encore CLI](https://encore.dev/docs/install) and Docker (Encore manages Postgres for you).
 
-```powershell
+```bash
 cd backend
 bun install
 encore run
@@ -42,27 +42,25 @@ API on `http://127.0.0.1:4000`, dev dashboard on `http://127.0.0.1:9400`. Migrat
 
 ## CLI — build & use
 
-```powershell
+```bash
 cd cli
 bun install
 bun build --compile ./src/cli.ts --outfile notify
 ```
 
-On Windows, Bun appends `.exe`, so run as `.\notify.exe`.
-
 Backend URL is `http://127.0.0.1:4000` by default; override with `--api-url=...` or `NOTIFY_API_URL=...`. `--json` on any command prints raw JSON; default output is column-aligned with unread notifications prefixed by `*`.
 
 ### Examples
 
-```powershell
-.\notify.exe users:create --name="Alice" --email="alice@example.com"
-.\notify.exe users:list
-.\notify.exe send --user-id=<id> --channel=in_app --title="Hello" --body="Welcome!"
-.\notify.exe list   --user-id=<id>
-.\notify.exe unread --user-id=<id>
-.\notify.exe read   --id=<notification-id>
-.\notify.exe subscribe --user-id=<id>     # live WebSocket stream
-.\notify.exe                              # interactive REPL (also: notify shell)
+```bash
+./notify users:create --name="Alice" --email="alice@example.com"
+./notify users:list
+./notify send --user-id=<id> --channel=in_app --title="Hello" --body="Welcome!"
+./notify list   --user-id=<id>
+./notify unread --user-id=<id>
+./notify read   --id=<notification-id>
+./notify subscribe --user-id=<id>     # live WebSocket stream
+./notify                              # interactive REPL (also: notify shell)
 ```
 
 Inside the REPL, the first Ctrl+C cancels the running command (closing any active WebSocket); a second at an empty prompt exits.
@@ -78,7 +76,7 @@ Inside the REPL, the first Ctrl+C cancels the running command (closing any activ
 
 ## Tests
 
-```powershell
+```bash
 bun tests/integration_test.ts   # REST endpoints + error paths + pagination
 bun tests/ws_smoke.ts            # WebSocket fan-out, isolation, ordering, backlog replay
 ```
@@ -86,16 +84,3 @@ bun tests/ws_smoke.ts            # WebSocket fan-out, isolation, ordering, backl
 Both create fresh per-run data and are safe to re-run against a live backend (`NOTIFY_API_URL` overrides the default).
 
 A Postman collection (`postman.json`) at the repo root covers every endpoint and auto-captures the created `userId` / `notificationId` between requests.
-
-## If I had more time
-
-- **Auth.** Endpoints are currently open. Encore's `auth` handler + a per-user opaque token issued at create time (hashed in the DB) and verified as `Authorization: Bearer …` would be the natural next step. The CLI would read it from `NOTIFY_TOKEN` or `--token`.
-- **Cursor-based replay on reconnect.** Unread rows replay on connect, but a client that read a notification and then disconnected won't see anything new that arrived while it was away unless it's still unread. A `?since=<notificationId>` query param would let clients resume exactly where they left off.
-- **Deploy to Encore Cloud.** A live URL the reviewer can `curl` is more impressive than `git clone && encore run`. `encore app create && encore app link && git push encore main` is ~30 minutes including the first cold-start.
-- **CI workflow.** A simple `.github/workflows/ci.yml` running typecheck + lint + format:check on both packages (+ spawning the backend and running the integration tests) is a high-leverage add.
-- **Real email provider.** `deliverEmail()` in `outbox.ts` is the seam — swap the simulated log line for `resend.emails.send(...)` (or SES `SendEmailCommand`) and the outbox + retry machinery wraps the real call untouched.
-- **Idempotency-Key header** on `POST /notifications` — store `key → notificationId` for ~24h and replay on duplicate. Prevents accidental double-sends from client retries.
-
-## AI assistance
-
-Claude (Anthropic) was used as a pair-programmer throughout: scaffolding the Encore service and migrations, writing the WebSocket stream and fan-out map, designing the CLI's REPL + abort-signal handling, and splitting types/classes into their own files. All code was read, understood, and adjusted by hand before commit.
