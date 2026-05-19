@@ -1,0 +1,194 @@
+{
+  "info": {
+    "name": "notify",
+    "description": "Notification backend (Encore.ts). Set `baseUrl` to the running backend (default http://127.0.0.1:4000). Run `Users > Create user` first — it captures `userId` into a collection variable. `Notifications > Send notification` likewise captures `notificationId`. Re-running either updates the variable, so subsequent requests just work.\n\n## WebSocket subscription — manual setup required\n\nPostman's collection JSON format (v2.1.0) does NOT support exporting WebSocket requests (open feature request: postman-app-support#11252). You must create the WS request by hand inside Postman:\n\n1. In Postman, click **New > WebSocket Request** (not a regular HTTP request).\n2. URL: `ws://127.0.0.1:4000/users/{{userId}}/notifications/stream`\n3. Optional channel filter: append `?channel=in_app` or `?channel=email` to the URL. Omit to receive both channels.\n4. Click **Connect**. On connect the server first replays any unread notifications for the user (filtered by `channel` if set), then sends `{type:\"notification\", data:{...}}` on each new `send` plus `{type:\"ping\"}` every 30s. Delivery is at-least-once — a notification committed during the connect race may arrive twice; dedupe by `data.id`.\n\nYou can save the WS request inside Postman to reuse, but it won't roundtrip through this JSON file when re-exported.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "5f8d6c1e-7c0a-4a6f-9d2a-notify00000a"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:4000", "type": "string" },
+    { "key": "userId", "value": "", "type": "string" },
+    { "key": "notificationId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Create user",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201/200 response', function () {",
+                  "  pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) {",
+                  "  pm.collectionVariables.set('userId', body.id);",
+                  "  console.log('userId set to', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alice\",\n  \"email\": \"alice@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            },
+            "description": "Creates a user. `email` is optional but required if you later want to send the user an `email`-channel notification. The response `id` is captured into the `userId` collection variable."
+          }
+        },
+        {
+          "name": "List users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"]
+            },
+            "description": "Returns all users, newest first."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "Send notification",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 response', function () {",
+                  "  pm.expect(pm.response.code).to.eql(200);",
+                  "});",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) {",
+                  "  pm.collectionVariables.set('notificationId', body.id);",
+                  "  console.log('notificationId set to', body.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"channel\": \"in_app\",\n  \"title\": \"Hello\",\n  \"body\": \"Welcome!\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"]
+            },
+            "description": "Creates and dispatches a notification. `channel` is `in_app` (delivered synchronously, `sent_at` set, fanned out to WebSocket subscribers) or `email` (queued for the outbox cron, status starts as `pending`). The response `id` is captured into `notificationId`."
+          }
+        },
+        {
+          "name": "Send notification (email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{userId}}\",\n  \"channel\": \"email\",\n  \"title\": \"Email subject\",\n  \"body\": \"Email body\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/notifications",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications"]
+            },
+            "description": "Same endpoint, but `channel = email`. Requires the user to have an email address on file. Delivery is asynchronous — the row starts as `delivery_status = pending` and the outbox cron (`every: 1h`) picks it up. The simulated send is a `log.info(\"simulated email send\", ...)` in `backend/notifications/notification/outbox/outbox.ts`."
+          }
+        },
+        {
+          "name": "List notifications for user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/notifications?page=1&size=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "notifications"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "1-based page number. Defaults to 1."
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "description": "Page size, 1-100. Defaults to 50."
+                }
+              ]
+            },
+            "description": "All notifications for `userId`, newest first. Offset pagination via `page` + `size`; response carries `total` and `totalPages`."
+          }
+        },
+        {
+          "name": "List unread for user",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/{{userId}}/notifications/unread?page=1&size=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["users", "{{userId}}", "notifications", "unread"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": "1-based page number. Defaults to 1."
+                },
+                {
+                  "key": "size",
+                  "value": "50",
+                  "description": "Page size, 1-100. Defaults to 50."
+                }
+              ]
+            },
+            "description": "Same shape as `List notifications`, filtered to `read_at IS NULL`."
+          }
+        },
+        {
+          "name": "Mark notification read",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/notifications/{{notificationId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["notifications", "{{notificationId}}", "read"]
+            },
+            "description": "Idempotent — uses `read_at = COALESCE(read_at, now())`, so re-running keeps the original timestamp. Returns the updated notification."
+          }
+        }
+      ]
+    }
+  ]
+}
