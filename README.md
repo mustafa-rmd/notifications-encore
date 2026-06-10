@@ -38,7 +38,9 @@ API on `http://127.0.0.1:4000`, dev dashboard on `http://127.0.0.1:9400`. Migrat
 
 ### Email outbox
 
-`POST /notifications` with `channel: "email"` writes the row as `delivery_status = 'pending'`. An Encore `CronJob("email-outbox", every: "1h")` claims pending rows, calls a simulated `deliverEmail()`, and marks them `sent` — or retries with exponential backoff (30s → 2m → 8m → 32m, capped at 2h, max 5 attempts) before marking `failed`. Swap `deliverEmail()` for a real provider (Resend, SES, …) without touching the API surface.
+`POST /notifications` with `channel: "email"` writes the row as `delivery_status = 'pending'`. An Encore `CronJob("email-outbox", every: "1m")` claims pending rows, calls a simulated `deliverEmail()`, and marks them `sent` — or retries with exponential backoff (30s → 2m → 8m → 32m, capped at 2h, max 5 attempts) before marking `failed`. Swap `deliverEmail()` for a real provider (Resend, SES, …) without touching the API surface.
+
+> **Local dev:** Encore does not run cron jobs automatically in local development (or Preview Environments) — the `email-outbox` job is registered but won't fire on its own. Trigger it manually from the dev dashboard (`http://127.0.0.1:9400` → Cron Jobs → **Trigger**) to drain pending rows. It runs automatically every minute only in deployed environments.
 
 ## CLI — build & use
 
