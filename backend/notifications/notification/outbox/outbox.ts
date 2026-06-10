@@ -1,4 +1,5 @@
 import { api } from "encore.dev/api";
+import { CronJob } from "encore.dev/cron";
 import log from "encore.dev/log";
 import { db } from "../../db";
 import type { ClaimedRow } from "./claimed-row";
@@ -45,7 +46,7 @@ export const processEmailOutbox = api(
         ORDER BY created_at ASC
         LIMIT ${BATCH_SIZE}
       )
-      RETURNING id, user_id, title, body, attempt_count
+      RETURNING id, user_id, title, attempt_count
     `) {
       claimed.push(row);
     }
@@ -99,3 +100,15 @@ export const processEmailOutbox = api(
     return { processed: claimed.length, sent, failed };
   },
 );
+
+// Drive the outbox: every minute, claim due pending email rows and try to
+// deliver them. Runs once per minute so the short end of the retry backoff
+// (30s, 2m) stays meaningful; the claim query is cheap thanks to the partial
+// index on (created_at) WHERE delivery_status = 'pending' AND channel = 'email'.
+// Encore executes cron jobs in cloud/staging environments, not in local dev —
+// trigger manually via POST /internal/process-email-outbox when testing locally.
+const _emailOutboxCron = new CronJob("email-outbox", {
+  title: "Process email outbox",
+  every: "1m",
+  endpoint: processEmailOutbox,
+});
